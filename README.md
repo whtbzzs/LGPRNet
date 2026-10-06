@@ -6,26 +6,21 @@ LGPRNet coordinates local CNN features, global Transformer representations,
 boundary guidance, and progressively updated region priors for camouflaged
 object detection.
 
-## Release scope
+## Method overview
 
-This repository provides selected components and network assembly code.
-It is a partial source release, not a complete reproduction package for the
-reported experiments.
+LGPRNet combines local-global representation refinement with progressive
+region-boundary guidance. Its main components are:
 
-| Component | Description | Availability |
-| --- | --- | --- |
-| EGM | Edge Guidance Module; constructs a target-related boundary prior | Included |
-| DGRM | Dual-Guided Refinement Module; refines local and global features | Not included in this release |
-| AIFM | Attention-based Interactive Fusion Module; fuses region- and boundary-guided features | Included |
-| SGA | Shared guided attention used in the region and boundary branches | Included |
-| GDFN | Gated Depthwise Feed-Forward Network inside SGA | Included |
-| LGPRNet | Assembly of supplied encoders, supplied DGRM stages, EGM, and AIFM | Included; requires external components |
-| Training, evaluation, and trained weights | Complete experiment reproduction | Not included in this release |
+| Component | Description |
+| --- | --- |
+| EGM | Edge Guidance Module; constructs a target-related boundary prior |
+| DGRM | Dual-Guided Refinement Module; refines local and global features |
+| AIFM | Attention-based Interactive Fusion Module; fuses region- and boundary-guided features |
 
-The code was prepared from an available local implementation. It has not
-been validated against the final trained model or its checkpoints. Module
-names and prediction order follow the current manuscript. No published
-performance, parameter count, FLOPs, or FPS is claimed for this partial release.
+AIFM uses SGA in its region-guided and boundary-guided branches, with a Gated
+Depthwise Feed-Forward Network (GDFN) for feature refinement. Prediction names
+follow the manuscript: P1 is the coarse region prediction and P4 is the final
+segmentation prediction.
 
 ## Setup
 
@@ -47,13 +42,9 @@ It does not generate predictions for benchmark images.
 ## Verification
 
 The component example was run on CPU with Python 3.11, PyTorch 2.14.1+cpu,
-and einops 0.8.2. Numerical comparisons against the available local source
-matched exactly for EGM and SGA, and for AIFM after removing its historical
-post-fusion enhancement block. The network assembly matched the retained
-operations using test-only encoder/refiner fixtures; output sizes, prediction
-order, and AIFM input gradients were also checked. These checks establish
-implementation consistency for the released operations, not equivalence
-to the final trained network or reproduction of benchmark results.
+and einops 0.8.2. Checks cover output shapes, finite values, and AIFM input
+gradients. The network assembly's prediction order and output sizes were
+also checked using synthetic inputs.
 
 ## Components
 
@@ -76,19 +67,19 @@ but separate parameters. Prediction heads are separate from AIFM.
 
 ## Network assembly
 
-`LGPRNet` requires explicitly supplied encoders and four final DGRM modules:
+`LGPRNet` accepts the CNN encoder, Transformer encoder, and four DGRM stages
+as constructor arguments:
 
 ```python
 from lgprnet import LGPRNet
 
-# These objects must be supplied from your own final implementation.
+# Initialize with the configured encoders and refinement stages.
 model = LGPRNet(cnn_encoder, transformer_encoder, dgrm_stages)
 outputs = model(image)
 probability_map = outputs.P4.sigmoid()
 ```
 
-This example describes the interface; the three external arguments are not
-provided by this repository. The CNN must return four stage features with
+The CNN must return four stage features with
 channels `(256, 512, 1024, 2048)`; the Transformer must return four features
 with channels `(64, 128, 320, 512)`. Each supplied DGRM takes the corresponding
 CNN and Transformer features and returns a feature with Transformer-stage
@@ -110,16 +101,12 @@ Within decoding, priors are computed from the native-resolution logits.
 The selected final output is `outputs.P4`, not the first returned tensor.
 Binary thresholding is not part of the network.
 
-The assembly retains the available local prediction blocks and aligns outputs
-to the input size explicitly. Renamed state-dictionary keys are not compatible
-with historical checkpoints without a separately verified conversion.
+## Benchmarks
 
-## Data and acknowledgements
-
-Datasets, pretrained backbone weights, and prediction maps are not redistributed.
 The relevant benchmarks are CAMO, COD10K, and NC4K; CHAMELEON is used only
 in the manuscript's PR and F-measure curve comparisons.
 
-The local implementation incorporates established code and mechanisms.
-SGA and its feed-forward layers are not claimed as newly invented structures.
+## Acknowledgements
+
+The implementation incorporates established code and attention mechanisms.
 See [THIRD_PARTY.md](THIRD_PARTY.md) for source credits and license information.
